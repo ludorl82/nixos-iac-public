@@ -1,0 +1,53 @@
+# Eval gate on PRs — the only gate before comin deploys a merge to the fleet.
+#
+# Evaluation (not build): computing every host's toplevel .drv catches syntax
+# errors, bad option names, missing files and module conflicts for all hosts
+# of both architectures cheaply — evaluation is architecture-independent, so
+# one x86_64 runner covers the Pi 5s too. What it cannot catch: build
+# failures (a broken package, a failed patch). If that starts biting, the
+# escalation is building one x86_64 host closure here with a binary cache.
+
+name: check
+
+on:
+  pull_request:
+    branches: [master]
+  # On demand, against any ref. Added 2026-08-06 after nixos-iac#11 had to be
+  # merged ungated during a GitHub Actions outage: with only the pull_request
+  # trigger there is no way to run the gate over master afterwards, so an
+  # ungated merge stays permanently unverified. `gh workflow run check.yml`
+  # closes that gap — and is also the way to re-check master after any
+  # direct push, which merges are not the only source of.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v31
+
+      - name: Evaluate every nixosConfiguration
+        run: |
+          hosts=$(nix flake show --json 2>/dev/null | jq -r '.nixosConfigurations | keys[]')
+          echo "hosts: $hosts"
+          fail=0
+          for h in $hosts; do
+            echo "::group::$h"
+            if nix eval --raw ".#nixosConfigurations.${h}.config.system.build.toplevel.drvPath"; then
+              echo " ok"
+            else
+              echo "::error::evaluation failed for $h"
+              fail=1
+            fi
+            echo "::endgroup::"
+          done
+          exit $fail
