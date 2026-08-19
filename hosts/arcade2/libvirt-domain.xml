@@ -1,0 +1,126 @@
+<!--
+  Canonical libvirt domain for the arcade2 gaming VM on `gaming-01` — twin of
+  arcade1. Define/restore with:  virsh define hosts/arcade2/libvirt-domain.xml
+  Keep in sync after any `virsh edit` (see arcade1's note on dumping inactive
+  XML; a literal double-hyphen breaks this comment).
+
+  NO <hostdev> YET: the RTX 3050 that will be passed through here is not
+  installed until the user is back from vacation. When it is:
+    1. gaming-01 binds the 3050 (+ its audio) to vfio-pci (add its ids to
+       vfio-pci.ids in hosts/gaming-01/configuration.nix, reboot gaming-01);
+    2. add two <hostdev managed='yes'> blocks here for the 3050's GPU + audio
+       PCI functions (copy arcade1's shape, swap the source bus/slot);
+    3. flip gpu=true in hosts/arcade2/configuration.nix;
+    4. virsh define this file + fully stop/start arcade2.
+  Until then arcade2 runs GPU-less on the emulated QXL display.
+
+  cdrom = the arcade2 installer ISO for the first install; eject it once
+  installed (see arcade1's note; the eject flag is a double-hyphen word).
+-->
+<domain type='kvm'>
+  <name>arcade2</name>
+  <uuid>00000000-0000-0000-0000-000000000000</uuid>
+  <memory unit='KiB'>16777216</memory>
+  <currentMemory unit='KiB'>16777216</currentMemory>
+  <vcpu placement='static'>8</vcpu>
+  <os firmware='efi'>
+    <type arch='x86_64' machine='q35'>hvm</type>
+    <firmware>
+      <feature enabled='no' name='enrolled-keys'/>
+      <feature enabled='no' name='secure-boot'/>
+    </firmware>
+    <loader readonly='yes' type='pflash' format='raw'>/run/libvirt/nix-ovmf/edk2-x86_64-code.fd</loader>
+    <nvram template='/run/libvirt/nix-ovmf/edk2-i386-vars.fd' templateFormat='raw' format='raw'>/var/lib/libvirt/qemu/nvram/arcade2_VARS.fd</nvram>
+    <boot dev='cdrom'/>
+    <boot dev='hd'/>
+  </os>
+  <features>
+    <acpi/>
+    <apic/>
+  </features>
+  <cpu mode='host-passthrough' check='none' migratable='off'>
+    <topology sockets='1' dies='1' cores='4' threads='2'/>
+  </cpu>
+  <clock offset='utc'>
+    <timer name='rtc' tickpolicy='catchup'/>
+    <timer name='pit' tickpolicy='delay'/>
+    <timer name='hpet' present='no'/>
+  </clock>
+  <on_poweroff>destroy</on_poweroff>
+  <on_reboot>restart</on_reboot>
+  <on_crash>destroy</on_crash>
+  <pm>
+    <suspend-to-mem enabled='no'/>
+    <suspend-to-disk enabled='no'/>
+  </pm>
+  <devices>
+    <emulator>/run/libvirt/nix-emulators/qemu-system-x86_64</emulator>
+    <disk type='file' device='disk'>
+      <driver name='qemu' type='qcow2' discard='unmap' cache='none' io='native'/>
+      <source file='/var/lib/libvirt/images/arcade2.qcow2'/>
+      <target dev='vda' bus='virtio'/>
+    </disk>
+    <!-- Dedicated games disk: gaming-01's SATA SSD sdb passed straight through,
+         wiped + ext4-formatted (label arcade2-games) on the host. The guest
+         mounts it at /games by label (see configuration.nix). -->
+    <disk type='block' device='disk'>
+      <driver name='qemu' type='raw' cache='none' io='native' discard='unmap'/>
+      <source dev='/dev/disk/by-id/ata-EXAMPLE_SSD_0000000000000001'/>
+      <target dev='vdb' bus='virtio'/>
+    </disk>
+    <!-- Empty cdrom: NixOS is installed, so it boots from vda. To reinstall,
+         insert the installer with `virsh change-media arcade2 sda
+         /var/lib/libvirt/images/arcade2-installer.iso`. -->
+    <disk type='file' device='cdrom'>
+      <driver name='qemu' type='raw'/>
+      <target dev='sda' bus='sata'/>
+      <readonly/>
+    </disk>
+    <controller type='pci' index='0' model='pcie-root'/>
+    <controller type='pci' index='1' model='pcie-root-port'/>
+    <controller type='pci' index='2' model='pcie-root-port'/>
+    <controller type='pci' index='3' model='pcie-root-port'/>
+    <controller type='pci' index='4' model='pcie-root-port'/>
+    <controller type='pci' index='5' model='pcie-root-port'/>
+    <controller type='pci' index='6' model='pcie-root-port'/>
+    <controller type='pci' index='7' model='pcie-root-port'/>
+    <controller type='pci' index='8' model='pcie-root-port'/>
+    <controller type='pci' index='9' model='pcie-root-port'/>
+    <controller type='sata' index='0'/>
+    <controller type='virtio-serial' index='0'/>
+
+    <!-- No <hostdev> until the RTX 3050 is installed (see header). -->
+
+    <interface type='direct' trustGuestRxFilters='yes'>
+      <mac address='02:00:00:00:00:01'/>
+      <source dev='vlan10' mode='bridge'/>
+      <model type='virtio'/>
+    </interface>
+    <interface type='direct' trustGuestRxFilters='yes'>
+      <mac address='02:00:00:00:00:01'/>
+      <source dev='eno2' mode='bridge'/>
+      <model type='virtio'/>
+    </interface>
+
+    <serial type='pty'>
+      <target type='isa-serial' port='0'>
+        <model name='isa-serial'/>
+      </target>
+    </serial>
+    <console type='pty'>
+      <target type='serial' port='0'/>
+    </console>
+    <channel type='unix'>
+      <target type='virtio' name='org.qemu.guest_agent.0'/>
+    </channel>
+    <input type='tablet' bus='usb'/>
+    <input type='mouse' bus='ps2'/>
+    <input type='keyboard' bus='ps2'/>
+    <graphics type='vnc' port='-1' autoport='yes' listen='127.0.0.1'/>
+    <video>
+      <model type='qxl' ram='65536' vram='65536' vgamem='16384' heads='1'/>
+    </video>
+    <audio id='1' type='none'/>
+    <memballoon model='virtio'/>
+  </devices>
+</domain>

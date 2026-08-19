@@ -1,0 +1,298 @@
+{
+  "edges": [
+    {
+      "from": "host:cloud-01",
+      "kind": "member-of",
+      "to": "cluster:k3s"
+    },
+    {
+      "from": "host:gaming-01",
+      "kind": "member-of",
+      "to": "cluster:k3s"
+    },
+    {
+      "from": "host:gpu-01",
+      "kind": "member-of",
+      "to": "cluster:k3s"
+    },
+    {
+      "from": "host:gpu-02",
+      "kind": "member-of",
+      "to": "cluster:k3s"
+    },
+    {
+      "from": "host:pi-01",
+      "kind": "member-of",
+      "to": "cluster:k3s"
+    },
+    {
+      "from": "host:pi-02",
+      "kind": "member-of",
+      "to": "cluster:k3s"
+    },
+    {
+      "from": "host:srv-01",
+      "kind": "member-of",
+      "to": "cluster:k3s"
+    },
+    {
+      "from": "host:vm-01",
+      "kind": "member-of",
+      "to": "cluster:k3s"
+    },
+    {
+      "from": "host:vm-02",
+      "kind": "member-of",
+      "to": "cluster:k3s"
+    },
+    {
+      "from": "host:pi-01",
+      "kind": "uses",
+      "to": "external:nas"
+    }
+  ],
+  "layer": "hardware",
+  "nodes": [
+    {
+      "id": "host:arcade1",
+      "kind": "host",
+      "label": "arcade1",
+      "layer": "hardware",
+      "meta": {
+        "arch": "x86_64-linux",
+        "class": "server",
+        "modules": [
+          "private-ca"
+        ],
+        "networks": []
+      },
+      "source": "hosts/arcade1/configuration.nix"
+    },
+    {
+      "id": "host:arcade2",
+      "kind": "host",
+      "label": "arcade2",
+      "layer": "hardware",
+      "meta": {
+        "arch": "x86_64-linux",
+        "class": "server",
+        "modules": [
+          "private-ca"
+        ],
+        "networks": []
+      },
+      "source": "hosts/arcade2/configuration.nix"
+    },
+    {
+      "id": "host:cloud-01",
+      "kind": "host",
+      "label": "cloud-01",
+      "layer": "hardware",
+      "meta": {
+        "arch": "x86_64-linux",
+        "class": "cloud-vm",
+        "k3sRole": "server",
+        "modules": [
+          "k3s-upstream",
+          "private-ca"
+        ],
+        "networks": [
+          "wireguard"
+        ]
+      },
+      "source": "hosts/cloud-01/configuration.nix"
+    },
+    {
+      "id": "host:console-vm",
+      "kind": "host",
+      "label": "console-vm",
+      "layer": "hardware",
+      "meta": {
+        "arch": "x86_64-linux",
+        "class": "vm",
+        "modules": [
+          "console-container",
+          "jumphost-tools",
+          "private-ca"
+        ],
+        "networks": []
+      },
+      "source": "hosts/console-vm/configuration.nix"
+    },
+    {
+      "id": "host:gaming-01",
+      "kind": "host",
+      "label": "gaming-01",
+      "layer": "hardware",
+      "meta": {
+        "arch": "x86_64-linux",
+        "class": "server",
+        "k3sRole": "agent",
+        "modules": [
+          "k3s-agent",
+          "private-ca",
+          "ups-client"
+        ],
+        "networks": [
+          "vlan10"
+        ]
+      },
+      "source": "hosts/gaming-01/configuration.nix"
+    },
+    {
+      "id": "host:gpu-01",
+      "kind": "host",
+      "label": "gpu-01",
+      "layer": "hardware",
+      "meta": {
+        "arch": "x86_64-linux",
+        "class": "server",
+        "k3sRole": "agent",
+        "modules": [
+          "k3s-agent",
+          "private-ca",
+          "rack-wake",
+          "ups-cp-1"
+        ],
+        "networks": [
+          "vlan10"
+        ]
+      },
+      "source": "hosts/gpu-01/configuration.nix"
+    },
+    {
+      "id": "host:gpu-02",
+      "kind": "host",
+      "label": "gpu-02",
+      "layer": "hardware",
+      "meta": {
+        "arch": "x86_64-linux",
+        "class": "server",
+        "k3sRole": "agent",
+        "modules": [
+          "k3s-agent",
+          "private-ca",
+          "ups-client"
+        ],
+        "networks": [
+          "vlan10"
+        ]
+      },
+      "source": "hosts/gpu-02/configuration.nix"
+    },
+    {
+      "id": "host:pi-01",
+      "kind": "host",
+      "label": "pi-01",
+      "layer": "hardware",
+      "meta": {
+        "arch": "aarch64-linux",
+        "class": "sbc",
+        "k3sRole": "agent",
+        "modules": [
+          "k3s-agent",
+          "k3s-upstream",
+          "nas-wake",
+          "private-ca",
+          "ups-cp-1"
+        ],
+        "networks": [
+          "vlan10"
+        ]
+      },
+      "source": "hosts/pi-01/configuration.nix"
+    },
+    {
+      "id": "host:pi-02",
+      "kind": "host",
+      "label": "pi-02",
+      "layer": "hardware",
+      "meta": {
+        "arch": "aarch64-linux",
+        "class": "sbc",
+        "k3sRole": "agent",
+        "modules": [
+          "console-container",
+          "ha-backup",
+          "house-heartbeat",
+          "jumphost",
+          "k3s-agent",
+          "k3s-upstream",
+          "private-ca",
+          "rack-wake",
+          "ups-cp-1"
+        ],
+        "networks": [
+          "vlan10"
+        ]
+      },
+      "source": "hosts/pi-02/configuration.nix"
+    },
+    {
+      "id": "host:srv-01",
+      "kind": "host",
+      "label": "srv-01",
+      "layer": "hardware",
+      "meta": {
+        "arch": "x86_64-linux",
+        "class": "server",
+        "k3sRole": "agent",
+        "modules": [
+          "k3s-agent",
+          "private-ca",
+          "ups-client"
+        ],
+        "networks": [
+          "vlan10"
+        ]
+      },
+      "source": "hosts/srv-01/configuration.nix"
+    },
+    {
+      "id": "host:vm-01",
+      "kind": "host",
+      "label": "vm-01",
+      "layer": "hardware",
+      "meta": {
+        "arch": "x86_64-linux",
+        "class": "vm",
+        "k3sRole": "agent",
+        "modules": [
+          "k3s-agent",
+          "private-ca"
+        ],
+        "networks": []
+      },
+      "source": "hosts/vm-01/configuration.nix"
+    },
+    {
+      "id": "host:vm-02",
+      "kind": "host",
+      "label": "vm-02",
+      "layer": "hardware",
+      "meta": {
+        "arch": "x86_64-linux",
+        "class": "vm",
+        "k3sRole": "agent",
+        "modules": [
+          "k3s-agent",
+          "private-ca"
+        ],
+        "networks": []
+      },
+      "source": "hosts/vm-02/configuration.nix"
+    },
+    {
+      "id": "external:nas",
+      "kind": "external",
+      "label": "nas",
+      "layer": "external",
+      "meta": {
+        "via": "nas-wake module, NFS mounts"
+      },
+      "source": "modules/nas-wake.nix"
+    }
+  ],
+  "repo": "nixos-iac-public",
+  "topologyVersion": 1
+}
