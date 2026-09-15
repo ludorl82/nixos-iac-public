@@ -1,0 +1,156 @@
+<!--
+  Canonical libvirt domain for the arcade1 gaming VM, which runs on `gaming-01`.
+  Define/restore with:  virsh define hosts/arcade1/libvirt-domain.xml
+
+  Domains here are imperative (virsh), so this file is the git-tracked source
+  of truth for the VM's hardware. Keep it in sync after any `virsh edit` with:
+    ssh <gaming-01> sudo virsh dumpxml [dash][dash]inactive arcade1
+  (double hyphen spelled out — a literal one is illegal inside an XML comment.)
+
+  KEY CHOICES:
+    - q35 + OVMF/UEFI: q35 is the sane machine type for PCIe GPU passthrough.
+    - <hostdev> x2, managed='yes': whatever card sits at 0000:65:00.0 and its
+      HDMI audio (0000:65:00.1). gaming-01 already binds both to vfio-pci;
+      managed=yes lets libvirt own the vfio handoff. No explicit guest
+      addresses — libvirt auto-places each on its own pcie-root-port, which is
+      fine for a Linux guest (only Windows is fussy about GPU+audio sharing a
+      slot).
+      These addresses are a SLOT, not a card, and the slot has now held three
+      different GPUs: the RTX 3060 until 2026-09-11, the GTX 960 as a stopgap,
+      and since 2026-09-14 an RTX 3050 (GA106, 10de:2507). Swapping the card in
+      that slot needs no change here — only gaming-01's vfio-pci.ids has to learn
+      the new device id, or the card comes up unbound and the domain fails to
+      start.
+    - cpu host-passthrough: gaming wants the real CPU exposed.
+    - net0 = macvtap on gaming-01's `vlan10` (VLAN10, guest sees untagged) —
+      primary, fleet mgmt, default route. net1 = macvtap on `eno2` (untagged
+      native VLAN50) — the home LAN where the Steam Remote Play clients live.
+      Both need trustGuestRxFilters='yes' + virtio (the e1000 emulation does
+      NOT report RX-filter changes, which silently breaks inbound guest IPv6
+      NDP) — the exact lesson vm-02 recorded. Either attribute needs a full
+      stop/start, not a guest reboot, to take effect.
+    - cdrom = the arcade1 installer ISO for the initial nixos-anywhere install;
+      eject it with `virsh change-media arcade1 sda` plus the eject flag once
+      installed (the flag is a double-hyphen word that cannot be written inside
+      an XML comment without making this file fail to parse).
+    - VNC + QXL: a bring-up safety net only. Once GNOME runs on the nvidia
+      virtual display, VNC shows the pre-X console, not the session — the real
+      access paths are Steam Remote Play, SSH, and `virsh console` (serial).
+-->
+<domain type='kvm'>
+  <name>arcade1</name>
+  <uuid>00000000-0000-0000-0000-000000000000</uuid>
+  <memory unit='KiB'>16777216</memory>
+  <currentMemory unit='KiB'>16777216</currentMemory>
+  <vcpu placement='static'>8</vcpu>
+  <os firmware='efi'>
+    <type arch='x86_64' machine='q35'>hvm</type>
+    <firmware>
+      <feature enabled='no' name='enrolled-keys'/>
+      <feature enabled='no' name='secure-boot'/>
+    </firmware>
+    <loader readonly='yes' type='pflash' format='raw'>/run/libvirt/nix-ovmf/edk2-x86_64-code.fd</loader>
+    <nvram template='/run/libvirt/nix-ovmf/edk2-i386-vars.fd' templateFormat='raw' format='raw'>/var/lib/libvirt/qemu/nvram/arcade1_VARS.fd</nvram>
+    <boot dev='cdrom'/>
+    <boot dev='hd'/>
+  </os>
+  <features>
+    <acpi/>
+    <apic/>
+  </features>
+  <cpu mode='host-passthrough' check='none' migratable='off'>
+    <topology sockets='1' dies='1' cores='4' threads='2'/>
+  </cpu>
+  <clock offset='utc'>
+    <timer name='rtc' tickpolicy='catchup'/>
+    <timer name='pit' tickpolicy='delay'/>
+    <timer name='hpet' present='no'/>
+  </clock>
+  <on_poweroff>destroy</on_poweroff>
+  <on_reboot>restart</on_reboot>
+  <on_crash>destroy</on_crash>
+  <pm>
+    <suspend-to-mem enabled='no'/>
+    <suspend-to-disk enabled='no'/>
+  </pm>
+  <devices>
+    <emulator>/run/libvirt/nix-emulators/qemu-system-x86_64</emulator>
+    <disk type='file' device='disk'>
+      <driver name='qemu' type='qcow2' discard='unmap' cache='none' io='native'/>
+      <source file='/var/lib/libvirt/images/arcade1.qcow2'/>
+      <target dev='vda' bus='virtio'/>
+    </disk>
+    <!-- Dedicated games disk: a 200 GiB qcow2 on gaming-01's NVMe (sparse), ext4
+         label arcade1-games, mounted at /games by the guest (configuration.nix).
+         Was the SATA SSD ata-EXAMPLE_SSD_0000000000000001 until
+         2026-08-22: it dropped off the bus under Steam writes (ata5 IDENTIFY
+         failed, capacity 0) and libvirt I/O-paused the VM. Do not go back to it. -->
+    <disk type='file' device='disk'>
+      <driver name='qemu' type='qcow2' discard='unmap' cache='none' io='native'/>
+      <source file='/var/lib/libvirt/images/arcade1-games.qcow2'/>
+      <target dev='vdb' bus='virtio'/>
+    </disk>
+    <!-- Empty cdrom: NixOS is installed, so it boots from vda. To reinstall,
+         insert the installer with `virsh change-media arcade1 sda
+         /var/lib/libvirt/images/arcade1-installer.iso`. -->
+    <disk type='file' device='cdrom'>
+      <driver name='qemu' type='raw'/>
+      <target dev='sda' bus='sata'/>
+      <readonly/>
+    </disk>
+    <controller type='pci' index='0' model='pcie-root'/>
+    <controller type='pci' index='1' model='pcie-root-port'/>
+    <controller type='pci' index='2' model='pcie-root-port'/>
+    <controller type='pci' index='3' model='pcie-root-port'/>
+    <controller type='pci' index='4' model='pcie-root-port'/>
+    <controller type='pci' index='5' model='pcie-root-port'/>
+    <controller type='pci' index='6' model='pcie-root-port'/>
+    <controller type='pci' index='7' model='pcie-root-port'/>
+    <controller type='pci' index='8' model='pcie-root-port'/>
+    <controller type='pci' index='9' model='pcie-root-port'/>
+    <controller type='sata' index='0'/>
+    <controller type='virtio-serial' index='0'/>
+
+    <!-- The passed-through GPU + its HDMI-audio function. See the slot note
+         in the header: this is an address, not a promise about which card. -->
+    <hostdev mode='subsystem' type='pci' managed='yes'>
+      <source>
+        <address domain='0x0000' bus='0x65' slot='0x00' function='0x0'/>
+      </source>
+    </hostdev>
+    <hostdev mode='subsystem' type='pci' managed='yes'>
+      <source>
+        <address domain='0x0000' bus='0x65' slot='0x00' function='0x1'/>
+      </source>
+    </hostdev>
+
+    <!-- net0 = VLAN10 (fleet mgmt, default route). -->
+    <interface type='direct' trustGuestRxFilters='yes'>
+      <mac address='02:00:00:00:00:01'/>
+      <source dev='vlan10' mode='bridge'/>
+      <model type='virtio'/>
+    </interface>
+    <!-- net1 = VLAN50 (home LAN; Steam Remote Play clients). -->
+
+    <serial type='pty'>
+      <target type='isa-serial' port='0'>
+        <model name='isa-serial'/>
+      </target>
+    </serial>
+    <console type='pty'>
+      <target type='serial' port='0'/>
+    </console>
+    <channel type='unix'>
+      <target type='virtio' name='org.qemu.guest_agent.0'/>
+    </channel>
+    <input type='tablet' bus='usb'/>
+    <input type='mouse' bus='ps2'/>
+    <input type='keyboard' bus='ps2'/>
+    <graphics type='vnc' port='-1' autoport='yes' listen='127.0.0.1'/>
+    <video>
+      <model type='qxl' ram='65536' vram='65536' vgamem='16384' heads='1'/>
+    </video>
+    <audio id='1' type='none'/>
+    <memballoon model='virtio'/>
+  </devices>
+</domain>
