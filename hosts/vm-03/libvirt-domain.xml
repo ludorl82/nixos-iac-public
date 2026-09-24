@@ -1,0 +1,178 @@
+<!--
+  Canonical libvirt domain for vm-03, the cluster's GPU node, which runs on
+  `gaming-01`. Define/restore with:  virsh define hosts/vm-03/libvirt-domain.xml
+
+  Domains here are imperative (virsh), so this file is the git-tracked source
+  of truth for the VM's hardware. Keep it in sync after any `virsh edit` with:
+    ssh <gaming-01> sudo virsh dumpxml [dash][dash]inactive vm-03
+  (double hyphen spelled out — a literal one is illegal inside an XML comment.)
+
+  KEY CHOICES:
+    - q35 + OVMF/UEFI, NOT the pc-i440fx vm-02 uses. i440fx puts a
+      passed-through card on a conventional PCI bus; q35 gives it a real
+      pcie-root-port, which is the trodden path for a GPU and what both arcade
+      VMs already run.
+    - <hostdev> x4, managed='yes': two GPUs and their audio functions, EVERY
+      ONE with <rom bar='off'/> — and that attribute is load-bearing, not
+      hygiene. Without it OVMF tries to run each card's option ROM (its UEFI
+      GOP driver) during PCI enumeration and wedges before it even initialises
+      the display: QXL stuck black at 640x480, never reaching the UEFI shell.
+      One card booted in 24s, three never booted; enlarging the 64-bit MMIO
+      aperture (fw_cfg X-PciMmio64Mb=65536) changed nothing; rom bar='off' on
+      all six functions fixed it outright (2026-09-14). Keep it on any hostdev
+      added here. This VM never renders on these cards — pure compute — so no
+      GOP is ever needed, and the nvidia driver in the guest does not depend on
+      the ROM BAR.
+      SIX BECAME FOUR ON 2026-09-17: the RTX 3050 8GB at 65:00.x left this
+      domain because gaming-01's own kubelet took it, and the host now drives it
+      with an nvidia module of its own. What is left are the two cards that
+      still circulate — the GTX 960 at 17:00.x and the RTX 3050 6GB at
+      b4:00.x. vm-03 owns NEITHER: both belong to an arcade guest (17:00.x
+      to arcade2, b4:00.x to arcade1 since the same re-deal) and are BORROWED
+      while nobody is playing. That is why this VM MUST be stopped before an
+      arcade guest starts — libvirt refuses a domain whose device is already
+      claimed — and arcade-ctl on gaming-01 does that handoff synchronously.
+      Leaving 65:00.x here would now fight the HOST for the card rather than
+      fight a guest, so it had to go the same day the host took it.
+      gaming-01 binds the four remaining functions to vfio-pci by device id;
+      these are SLOTS, not cards — two things must agree or a domain refuses
+      to start: the address here, and the id in gaming-01's vfio-pci.ids.
+    - 8 GiB / 4 vCPU. gaming-01 has 6 cores / 12 threads and 62 GiB; the two
+      arcade guests take 16 GiB each, so this still leaves ~22 GiB free with
+      everything running. It does NOT all run at once in practice — the
+      game-mode hook stops this VM for the duration of a gaming session.
+    - autostart is ON (unlike the arcade guests, which are on-demand): this is
+      a cluster node and should come back by itself after a host reboot.
+    - Single NIC, macvtap on gaming-01's `vlan10`, untagged to the guest.
+      trustGuestRxFilters='yes' + virtio is required or inbound guest IPv6 NDP
+      is silently dropped (the lesson vm-02 recorded). Deliberately no VLAN50
+      leg — a compute node has no business on the home LAN, and multi-homing
+      has cost us something every time on this host.
+    - qemu guest agent: the game-mode hook uses it for a clean shutdown before
+      a gaming session. Without it the hook could only destroy the VM.
+    - No GPU video output is used: the card is for compute. The QXL display is
+      a bring-up console only.
+-->
+<domain type='kvm'>
+  <name>vm-03</name>
+  <uuid>00000000-0000-0000-0000-000000000000</uuid>
+  <memory unit='KiB'>8388608</memory>
+  <currentMemory unit='KiB'>8388608</currentMemory>
+  <vcpu placement='static'>4</vcpu>
+  <os firmware='efi'>
+    <type arch='x86_64' machine='q35'>hvm</type>
+    <firmware>
+      <feature enabled='no' name='enrolled-keys'/>
+      <feature enabled='no' name='secure-boot'/>
+    </firmware>
+    <loader readonly='yes' type='pflash' format='raw'>/run/libvirt/nix-ovmf/edk2-x86_64-code.fd</loader>
+    <nvram template='/run/libvirt/nix-ovmf/edk2-i386-vars.fd' templateFormat='raw' format='raw'>/var/lib/libvirt/qemu/nvram/vm-03_VARS.fd</nvram>
+    <boot dev='cdrom'/>
+    <boot dev='hd'/>
+  </os>
+  <features>
+    <acpi/>
+    <apic/>
+  </features>
+  <cpu mode='host-passthrough' check='none' migratable='off'>
+    <topology sockets='1' dies='1' cores='2' threads='2'/>
+  </cpu>
+  <clock offset='utc'>
+    <timer name='rtc' tickpolicy='catchup'/>
+    <timer name='pit' tickpolicy='delay'/>
+    <timer name='hpet' present='no'/>
+  </clock>
+  <on_poweroff>destroy</on_poweroff>
+  <on_reboot>restart</on_reboot>
+  <on_crash>destroy</on_crash>
+  <pm>
+    <suspend-to-mem enabled='no'/>
+    <suspend-to-disk enabled='no'/>
+  </pm>
+  <devices>
+    <emulator>/run/libvirt/nix-emulators/qemu-system-x86_64</emulator>
+    <disk type='file' device='disk'>
+      <driver name='qemu' type='qcow2' discard='unmap' cache='none' io='native'/>
+      <source file='/var/lib/libvirt/images/vm-03.qcow2'/>
+      <target dev='vda' bus='virtio'/>
+    </disk>
+    <!-- Empty cdrom. To install, insert the installer with
+         `virsh change-media vm-03 sda
+         /var/lib/libvirt/images/vm-03-installer.iso`. -->
+    <disk type='file' device='cdrom'>
+      <driver name='qemu' type='raw'/>
+      <target dev='sda' bus='sata'/>
+      <readonly/>
+    </disk>
+    <controller type='pci' index='0' model='pcie-root'/>
+    <controller type='pci' index='1' model='pcie-root-port'/>
+    <controller type='pci' index='2' model='pcie-root-port'/>
+    <controller type='pci' index='3' model='pcie-root-port'/>
+    <controller type='pci' index='4' model='pcie-root-port'/>
+    <controller type='pci' index='5' model='pcie-root-port'/>
+    <controller type='pci' index='6' model='pcie-root-port'/>
+    <controller type='sata' index='0'/>
+    <controller type='virtio-serial' index='0'/>
+
+    <!-- ALL THREE GPUs, each with its HDMI-audio function. Addresses, not
+         promises about which card — see the header.
+         17:00.x  GTX 960   — vm-03's own, always here
+         65:00.x  RTX 3050  — arcade1's card, borrowed while nobody plays
+         b4:00.x  RTX 3050  — arcade2's card, borrowed while nobody plays
+         The two borrowed ones are why this VM MUST be stopped before an arcade
+         guest starts: libvirt refuses a domain whose device is already in use.
+         arcade-ctl does that handoff synchronously; see hosts/gaming-01. -->
+    <hostdev mode='subsystem' type='pci' managed='yes'>
+      <source>
+        <address domain='0x0000' bus='0x17' slot='0x00' function='0x0'/>
+      </source>
+      <rom bar='off'/>
+    </hostdev>
+    <hostdev mode='subsystem' type='pci' managed='yes'>
+      <source>
+        <address domain='0x0000' bus='0x17' slot='0x00' function='0x1'/>
+      </source>
+      <rom bar='off'/>
+    </hostdev>
+    <hostdev mode='subsystem' type='pci' managed='yes'>
+      <source>
+        <address domain='0x0000' bus='0xb4' slot='0x00' function='0x0'/>
+      </source>
+      <rom bar='off'/>
+    </hostdev>
+    <hostdev mode='subsystem' type='pci' managed='yes'>
+      <source>
+        <address domain='0x0000' bus='0xb4' slot='0x00' function='0x1'/>
+      </source>
+      <rom bar='off'/>
+    </hostdev>
+
+    <!-- VLAN10 (fleet mgmt, default route). Only interface. -->
+    <interface type='direct' trustGuestRxFilters='yes'>
+      <mac address='02:00:00:00:00:01'/>
+      <source dev='vlan10' mode='bridge'/>
+      <model type='virtio'/>
+    </interface>
+
+    <serial type='pty'>
+      <target type='isa-serial' port='0'>
+        <model name='isa-serial'/>
+      </target>
+    </serial>
+    <console type='pty'>
+      <target type='serial' port='0'/>
+    </console>
+    <channel type='unix'>
+      <target type='virtio' name='org.qemu.guest_agent.0'/>
+    </channel>
+    <input type='tablet' bus='usb'/>
+    <input type='mouse' bus='ps2'/>
+    <input type='keyboard' bus='ps2'/>
+    <graphics type='vnc' port='-1' autoport='yes' listen='127.0.0.1'/>
+    <video>
+      <model type='qxl' ram='65536' vram='65536' vgamem='16384' heads='1'/>
+    </video>
+    <audio id='1' type='none'/>
+    <memballoon model='virtio'/>
+  </devices>
+</domain>

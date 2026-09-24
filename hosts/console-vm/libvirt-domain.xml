@@ -1,0 +1,134 @@
+<!--
+  Recovery artifact for the console-vm console VM on gpu-01, same contract as
+  hosts/vm-01/libvirt-domain.xml: domains are created imperatively with
+  virt-install, so nothing about the VM's hardware is otherwise in git.
+  Restore with:  virsh define hosts/console-vm/libvirt-domain.xml
+  Keep this in sync by hand after any `virsh edit`, by dumping the
+  inactive config on gpu-01:  ssh gpu-01 sudo virsh dumpxml \-\-inactive console-vm
+
+  The two attributes that MUST survive any rebuild (their loss cost a full
+  rediscovery on vm-02, 2026-07-25):
+
+    trustGuestRxFilters='yes' on BOTH <interface> elements - without it,
+    macvtap never learns the guest's solicited-node multicast group, so
+    inbound NDP for the VM's IPv6 address is silently dropped.
+
+    <model type='virtio'/> - REQUIRED for the above to do anything.
+    trustGuestRxFilters only works if the NIC model reports the guest's RX
+    filter changes to the host; virtio-net does, e1000 does NOT. With e1000
+    the symptom is maddening: outbound IPv6 fine, replies to guest-initiated
+    traffic fine, only *cold* inbound NDP fails (neighbour stuck INCOMPLETE),
+    so a warm neighbour cache hides it entirely.
+
+  Either change needs a full stop/start (virsh shutdown + virsh start), not
+  a guest reboot.
+
+  net0 -> parent `vlan10` (tagged VLAN10 on gpu-01), primary, default route.
+  net1 -> parent `eno2` (untagged native VLAN50 on gpu-01), address only.
+
+  CPU: host-model (vm-02's cleaner shape) rather than vm-01's dumped
+  Skylake expansion - same host, same effective CPU.
+
+  Sizing: 6 vCPU / 16 GiB - the console workspace, freed from the 4 GiB Pi.
+  Disk: /var/lib/libvirt/images/console-vm.qcow2, 100G sparse, discard=unmap.
+-->
+<domain type='kvm'>
+  <name>console-vm</name>
+  <uuid>00000000-0000-0000-0000-000000000000</uuid>
+  <memory unit='KiB'>16777216</memory>
+  <currentMemory unit='KiB'>16777216</currentMemory>
+  <vcpu placement='static'>6</vcpu>
+  <resource>
+    <partition>/machine</partition>
+  </resource>
+  <os firmware='efi'>
+    <type arch='x86_64' machine='pc-i440fx-11.0'>hvm</type>
+    <firmware>
+      <feature enabled='no' name='enrolled-keys'/>
+      <feature enabled='no' name='secure-boot'/>
+    </firmware>
+    <loader readonly='yes' type='pflash' format='raw'>/run/libvirt/nix-ovmf/edk2-x86_64-code.fd</loader>
+    <nvram template='/run/libvirt/nix-ovmf/edk2-i386-vars.fd' templateFormat='raw' format='raw'>/var/lib/libvirt/qemu/nvram/console-vm_VARS.fd</nvram>
+    <boot dev='cdrom'/>
+    <boot dev='hd'/>
+  </os>
+  <features>
+    <acpi/>
+    <apic/>
+  </features>
+  <cpu mode='host-model' check='partial'/>
+  <clock offset='utc'>
+    <timer name='rtc' tickpolicy='catchup'/>
+    <timer name='pit' tickpolicy='delay'/>
+    <timer name='hpet' present='no'/>
+  </clock>
+  <on_poweroff>destroy</on_poweroff>
+  <on_reboot>restart</on_reboot>
+  <on_crash>destroy</on_crash>
+  <pm>
+    <suspend-to-mem enabled='no'/>
+    <suspend-to-disk enabled='no'/>
+  </pm>
+  <devices>
+    <emulator>/run/libvirt/nix-emulators/qemu-system-x86_64</emulator>
+    <disk type='file' device='disk'>
+      <driver name='qemu' type='qcow2' discard='unmap'/>
+      <source file='/var/lib/libvirt/images/console-vm.qcow2'/>
+      <backingStore/>
+      <target dev='vda' bus='virtio'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x04' function='0x0'/>
+    </disk>
+    <disk type='file' device='cdrom'>
+      <driver name='qemu' type='raw'/>
+      <target dev='hda' bus='ide'/>
+      <readonly/>
+      <address type='drive' controller='0' bus='0' target='0' unit='0'/>
+    </disk>
+    <controller type='usb' index='0' model='ich9-ehci1'>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x03' function='0x7'/>
+    </controller>
+    <controller type='usb' index='0' model='ich9-uhci1'>
+      <cp-1 startport='0'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x03' function='0x0' multifunction='on'/>
+    </controller>
+    <controller type='usb' index='0' model='ich9-uhci2'>
+      <cp-1 startport='2'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x03' function='0x1'/>
+    </controller>
+    <controller type='usb' index='0' model='ich9-uhci3'>
+      <cp-1 startport='4'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x03' function='0x2'/>
+    </controller>
+    <controller type='pci' index='0' model='pci-root'/>
+    <controller type='ide' index='0'>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x01' function='0x1'/>
+    </controller>
+    <interface type='direct' trustGuestRxFilters='yes'>
+      <mac address='02:00:00:00:00:01'/>
+      <source dev='vlan10' mode='bridge'/>
+      <model type='virtio'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x02' function='0x0'/>
+    </interface>
+    <interface type='direct' trustGuestRxFilters='yes'>
+      <mac address='02:00:00:00:00:01'/>
+      <source dev='eno2' mode='bridge'/>
+      <model type='virtio'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x06' function='0x0'/>
+    </interface>
+    <serial type='pty'>
+      <target type='isa-serial' port='0'>
+        <model name='isa-serial'/>
+      </target>
+    </serial>
+    <console type='pty'>
+      <target type='serial' port='0'/>
+    </console>
+    <input type='mouse' bus='ps2'/>
+    <input type='keyboard' bus='ps2'/>
+    <audio id='1' type='none'/>
+    <memballoon model='virtio'>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x05' function='0x0'/>
+    </memballoon>
+  </devices>
+  <seclabel type='dynamic' model='dac' relabel='yes'/>
+</domain>
