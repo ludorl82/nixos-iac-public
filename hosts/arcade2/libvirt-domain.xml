@@ -1,0 +1,147 @@
+<!--
+  Canonical libvirt domain for the arcade2 gaming VM on `gaming-01` — twin of
+  arcade1. Define/restore with:  virsh define hosts/arcade2/libvirt-domain.xml
+  Keep in sync after any `virsh edit` (see arcade1's note on dumping inactive
+  XML; a literal double-hyphen breaks this comment).
+
+  <hostdev> x2, managed='yes': the GTX 960 (0000:17:00.0, 10de:1401) and its
+  HDMI audio (0000:17:00.1, 10de:0fba), IOMMU group 7 on gaming-01, both
+  vfio-bound via gaming-01's vfio-pci.ids. Same shape as arcade1's hostdevs, only
+  the source bus differs (0x17 vs 0xb4).
+
+  THE BUS CHANGED ON 2026-09-17, from 0xb4 to 0x17, and so did the CARD: this
+  guest gave up the RTX 3050 6GB (10de:2584) to arcade1 and took the GTX 960,
+  because gaming-01's host claimed the 8GB GA106 at 0x65 for its own kubelet.
+  Nothing was unscrewed — the three cards sit where they sat, the guests were
+  re-pointed. The guest's driver DOES have to follow: a GM206 needs
+  legacy_580, see hosts/arcade2/configuration.nix.
+
+  This slot had held the 3050 since 2026-08-22; the card was physically moved
+  once, on 2026-08-31 for airflow, which is when its bus went 0x17 -> 0xb4.
+
+  cdrom = the arcade2 installer ISO for the first install; eject it once
+  installed (see arcade1's note; the eject flag is a double-hyphen word).
+-->
+<domain type='kvm'>
+  <name>arcade2</name>
+  <uuid>00000000-0000-0000-0000-000000000000</uuid>
+  <memory unit='KiB'>16777216</memory>
+  <currentMemory unit='KiB'>16777216</currentMemory>
+  <!-- 6 vCPU, baisse de 8 le 2026-09-17. Les DEUX invités arcade tournent en
+       meme temps quand le couple joue, et 8+8 demandait 16 vCPU sur les 12
+       fils de gaming-01 (Xeon W-2135, 6 coeurs / 12 fils). Surabonnement mesure
+       ce soir la: 5,0 pour cent de vol CPU dans l'invite, gaming-01 a 27 pour
+       cent d'inactivite, charge 10,75. 6+6 = 12, donc plus aucun vCPU en
+       trop. La topologie DOIT suivre (3 coeurs x 2 fils = 6) ou libvirt
+       refuse le domaine.
+       Si du vol persiste, l'etape suivante est 5 chacune: elle laisse deux
+       fils a l'hote pour les threads emulateur et IO de QEMU, que 6+6 ne
+       laisse pas. Le k3s de gaming-01 est draine pendant une partie, c'est ce
+       qui rend 6+6 tenable. -->
+  <vcpu placement='static'>6</vcpu>
+  <os firmware='efi'>
+    <type arch='x86_64' machine='q35'>hvm</type>
+    <firmware>
+      <feature enabled='no' name='enrolled-keys'/>
+      <feature enabled='no' name='secure-boot'/>
+    </firmware>
+    <loader readonly='yes' type='pflash' format='raw'>/run/libvirt/nix-ovmf/edk2-x86_64-code.fd</loader>
+    <nvram template='/run/libvirt/nix-ovmf/edk2-i386-vars.fd' templateFormat='raw' format='raw'>/var/lib/libvirt/qemu/nvram/arcade2_VARS.fd</nvram>
+    <boot dev='cdrom'/>
+    <boot dev='hd'/>
+  </os>
+  <features>
+    <acpi/>
+    <apic/>
+  </features>
+  <cpu mode='host-passthrough' check='none' migratable='off'>
+    <topology sockets='1' dies='1' cores='3' threads='2'/>
+  </cpu>
+  <clock offset='utc'>
+    <timer name='rtc' tickpolicy='catchup'/>
+    <timer name='pit' tickpolicy='delay'/>
+    <timer name='hpet' present='no'/>
+  </clock>
+  <on_poweroff>destroy</on_poweroff>
+  <on_reboot>restart</on_reboot>
+  <on_crash>destroy</on_crash>
+  <pm>
+    <suspend-to-mem enabled='no'/>
+    <suspend-to-disk enabled='no'/>
+  </pm>
+  <devices>
+    <emulator>/run/libvirt/nix-emulators/qemu-system-x86_64</emulator>
+    <disk type='file' device='disk'>
+      <driver name='qemu' type='qcow2' discard='unmap' cache='none' io='native'/>
+      <source file='/var/lib/libvirt/images/arcade2.qcow2'/>
+      <target dev='vda' bus='virtio'/>
+    </disk>
+    <!-- Dedicated games disk: gaming-01's SATA SSD sdb passed straight through,
+         wiped + ext4-formatted (label arcade2-games) on the host. The guest
+         mounts it at /games by label (see configuration.nix). -->
+    <disk type='block' device='disk'>
+      <driver name='qemu' type='raw' cache='none' io='native' discard='unmap'/>
+      <source dev='/dev/disk/by-id/ata-EXAMPLE_SSD_0000000000000001'/>
+      <target dev='vdb' bus='virtio'/>
+    </disk>
+    <!-- Empty cdrom: NixOS is installed, so it boots from vda. To reinstall,
+         insert the installer with `virsh change-media arcade2 sda
+         /var/lib/libvirt/images/arcade2-installer.iso`. -->
+    <disk type='file' device='cdrom'>
+      <driver name='qemu' type='raw'/>
+      <target dev='sda' bus='sata'/>
+      <readonly/>
+    </disk>
+    <controller type='pci' index='0' model='pcie-root'/>
+    <controller type='pci' index='1' model='pcie-root-port'/>
+    <controller type='pci' index='2' model='pcie-root-port'/>
+    <controller type='pci' index='3' model='pcie-root-port'/>
+    <controller type='pci' index='4' model='pcie-root-port'/>
+    <controller type='pci' index='5' model='pcie-root-port'/>
+    <controller type='pci' index='6' model='pcie-root-port'/>
+    <controller type='pci' index='7' model='pcie-root-port'/>
+    <controller type='pci' index='8' model='pcie-root-port'/>
+    <controller type='pci' index='9' model='pcie-root-port'/>
+    <controller type='sata' index='0'/>
+    <controller type='virtio-serial' index='0'/>
+
+    <!-- The passed-through GTX 960: GPU + its HDMI-audio function. -->
+    <hostdev mode='subsystem' type='pci' managed='yes'>
+      <source>
+        <address domain='0x0000' bus='0x17' slot='0x00' function='0x0'/>
+      </source>
+    </hostdev>
+    <hostdev mode='subsystem' type='pci' managed='yes'>
+      <source>
+        <address domain='0x0000' bus='0x17' slot='0x00' function='0x1'/>
+      </source>
+    </hostdev>
+
+    <interface type='direct' trustGuestRxFilters='yes'>
+      <mac address='02:00:00:00:00:01'/>
+      <source dev='vlan10' mode='bridge'/>
+      <model type='virtio'/>
+    </interface>
+
+    <serial type='pty'>
+      <target type='isa-serial' port='0'>
+        <model name='isa-serial'/>
+      </target>
+    </serial>
+    <console type='pty'>
+      <target type='serial' port='0'/>
+    </console>
+    <channel type='unix'>
+      <target type='virtio' name='org.qemu.guest_agent.0'/>
+    </channel>
+    <input type='tablet' bus='usb'/>
+    <input type='mouse' bus='ps2'/>
+    <input type='keyboard' bus='ps2'/>
+    <graphics type='vnc' port='-1' autoport='yes' listen='127.0.0.1'/>
+    <video>
+      <model type='qxl' ram='65536' vram='65536' vgamem='16384' heads='1'/>
+    </video>
+    <audio id='1' type='none'/>
+    <memballoon model='virtio'/>
+  </devices>
+</domain>

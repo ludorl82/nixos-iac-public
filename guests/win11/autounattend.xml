@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Answer file that installed win11 (see libvirt-domain.xml beside it).
+  Windows Setup finds it at the ROOT of any attached drive, so it rides on the
+  second cdrom with the virtio-win drivers and win11-setup.ps1:
+
+    copy the tree of nixpkgs#virtio-win into drv/ (make it writable),
+    add autounattend.xml and win11-setup.ps1 at its root, then
+    genisoimage -J -r -V WIN11DRV -o win11-drivers.iso drv/
+  (commands with [dash][dash] flags are spelled out in words: a literal
+  double hyphen is illegal inside an XML comment, and Setup parses this.)
+
+  The Windows ISO itself was built with UUP dump (the 25H2 set, fr-CA,
+  Professional only) because Microsoft's download endpoint refuses automated
+  requests from this lab's address. UUP dump assembles the ISO from the files
+  Windows Update serves; nothing in it comes from a third party. Built on
+  Linux, the converter cannot integrate the cumulative updates, so the image
+  installs as 26100.1 and Windows Update carries it forward from there.
+
+  NO SECRET IN HERE, deliberately:
+    - The product key is the PUBLIC generic install key for Pro. It selects
+      the edition and never activates; the real key is entered afterwards in
+      Settings > Activation, and never passes through git.
+    - The local account `ludo` has a BLANK password. Windows refuses network
+      logons for blank-password accounts (LimitBlankPasswordUse, on by
+      default), so it is reachable only from the console — VNC through gaming-01,
+      itself LAN/VPN-only. Setting a password is the first thing to do, and
+      RDP will not accept the account until that is done.
+
+  Locale fr-CA with the Canadian French keyboard (0c0c:00001009); time zone
+  Eastern, like the arcade guests.
+-->
+<unattend xmlns="urn:schemas-microsoft-com:unattend" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+  <settings pass="windowsPE">
+    <component name="Microsoft-Windows-International-Core-WinPE" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <SetupUILanguage><UILanguage>fr-CA</UILanguage></SetupUILanguage>
+      <InputLocale>0c0c:00001009</InputLocale>
+      <SystemLocale>fr-CA</SystemLocale>
+      <UILanguage>fr-CA</UILanguage>
+      <UserLocale>fr-CA</UserLocale>
+    </component>
+    <!-- Setup has no driver for virtio-blk or virtio-net. Every plausible
+         letter for the drivers cdrom is listed; missing paths are skipped. -->
+    <component name="Microsoft-Windows-PnpCustomizationsWinPE" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <DriverPaths>
+        <PathAndCredentials wcm:action="add" wcm:keyValue="1"><Path>D:\viostor\w11\amd64</Path></PathAndCredentials>
+        <PathAndCredentials wcm:action="add" wcm:keyValue="2"><Path>E:\viostor\w11\amd64</Path></PathAndCredentials>
+        <PathAndCredentials wcm:action="add" wcm:keyValue="3"><Path>F:\viostor\w11\amd64</Path></PathAndCredentials>
+        <PathAndCredentials wcm:action="add" wcm:keyValue="4"><Path>D:\NetKVM\w11\amd64</Path></PathAndCredentials>
+        <PathAndCredentials wcm:action="add" wcm:keyValue="5"><Path>E:\NetKVM\w11\amd64</Path></PathAndCredentials>
+        <PathAndCredentials wcm:action="add" wcm:keyValue="6"><Path>F:\NetKVM\w11\amd64</Path></PathAndCredentials>
+      </DriverPaths>
+    </component>
+    <component name="Microsoft-Windows-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <!-- The TPM is real (swtpm); Secure Boot is not, because nixpkgs ships
+           no OVMF vars with Microsoft's keys enrolled. -->
+      <RunSynchronous>
+        <RunSynchronousCommand wcm:action="add"><Order>1</Order><Path>reg add HKLM\SYSTEM\Setup\LabConfig /v BypassSecureBootCheck /t REG_DWORD /d 1 /f</Path></RunSynchronousCommand>
+      </RunSynchronous>
+      <DiskConfiguration>
+        <Disk wcm:action="add">
+          <DiskID>0</DiskID>
+          <WillWipeDisk>true</WillWipeDisk>
+          <CreatePartitions>
+            <CreatePartition wcm:action="add"><Order>1</Order><Type>EFI</Type><Size>300</Size></CreatePartition>
+            <CreatePartition wcm:action="add"><Order>2</Order><Type>MSR</Type><Size>16</Size></CreatePartition>
+            <CreatePartition wcm:action="add"><Order>3</Order><Type>Primary</Type><Extend>true</Extend></CreatePartition>
+          </CreatePartitions>
+          <ModifyPartitions>
+            <ModifyPartition wcm:action="add"><Order>1</Order><PartitionID>1</PartitionID><Format>FAT32</Format><Label>System</Label></ModifyPartition>
+            <ModifyPartition wcm:action="add"><Order>2</Order><PartitionID>2</PartitionID></ModifyPartition>
+            <ModifyPartition wcm:action="add"><Order>3</Order><PartitionID>3</PartitionID><Format>NTFS</Format><Label>Windows</Label><Letter>C</Letter></ModifyPartition>
+          </ModifyPartitions>
+        </Disk>
+      </DiskConfiguration>
+      <ImageInstall>
+        <OSImage>
+          <InstallTo><DiskID>0</DiskID><PartitionID>3</PartitionID></InstallTo>
+          <InstallFrom><MetaData wcm:action="add"><Key>/IMAGE/INDEX</Key><Value>1</Value></MetaData></InstallFrom>
+        </OSImage>
+      </ImageInstall>
+      <UserData>
+        <AcceptEula>true</AcceptEula>
+        <!-- Public generic install key for Windows 11 Pro: selects, never activates. -->
+        <ProductKey><Key>VK7JG-NPHTM-C97JM-9MPGT-3V66T</Key><WillShowUI>OnError</WillShowUI></ProductKey>
+      </UserData>
+    </component>
+  </settings>
+  <settings pass="specialize">
+    <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <ComputerName>win11</ComputerName>
+      <TimeZone>Eastern Standard Time</TimeZone>
+    </component>
+    <component name="Microsoft-Windows-Deployment" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <RunSynchronous>
+        <!-- Local account without the Microsoft-account detour in OOBE. -->
+        <RunSynchronousCommand wcm:action="add"><Order>1</Order><Path>reg add HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\OOBE /v BypassNRO /t REG_DWORD /d 1 /f</Path></RunSynchronousCommand>
+      </RunSynchronous>
+    </component>
+  </settings>
+  <settings pass="oobeSystem">
+    <component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <InputLocale>0c0c:00001009</InputLocale>
+      <SystemLocale>fr-CA</SystemLocale>
+      <UILanguage>fr-CA</UILanguage>
+      <UserLocale>fr-CA</UserLocale>
+    </component>
+    <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <OOBE>
+        <HideEULAPage>true</HideEULAPage>
+        <HideOEMRegistrationScreen>true</HideOEMRegistrationScreen>
+        <HideOnlineAccountScreens>true</HideOnlineAccountScreens>
+        <HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
+        <ProtectYourPC>3</ProtectYourPC>
+      </OOBE>
+      <UserAccounts>
+        <LocalAccounts>
+          <!-- The group NAME is localized on a fr-CA image; win11-setup.ps1
+               re-adds the account by SID (S-1-5-32-544) in case it is not. -->
+          <LocalAccount wcm:action="add">
+            <Name>ludo</Name>
+            <Group>Administrateurs</Group>
+            <Password><Value></Value><PlainText>true</PlainText></Password>
+          </LocalAccount>
+        </LocalAccounts>
+      </UserAccounts>
+      <AutoLogon>
+        <Enabled>true</Enabled>
+        <Username>ludo</Username>
+        <Password><Value></Value><PlainText>true</PlainText></Password>
+        <LogonCount>1</LogonCount>
+      </AutoLogon>
+      <FirstLogonCommands>
+        <SynchronousCommand wcm:action="add">
+          <Order>1</Order>
+          <CommandLine>cmd /c for %d in (D E F G) do if exist %d:\win11-setup.ps1 powershell -NoProfile -ExecutionPolicy Bypass -File %d:\win11-setup.ps1</CommandLine>
+          <Description>virtio drivers + guest agent, static IPv4, RDP</Description>
+        </SynchronousCommand>
+      </FirstLogonCommands>
+    </component>
+  </settings>
+</unattend>

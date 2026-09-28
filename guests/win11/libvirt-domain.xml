@@ -1,0 +1,192 @@
+<!--
+  Canonical libvirt domain for win11, a Windows 11 Pro desktop VM on `gaming-01`.
+  Define/restore with:  virsh define guests/win11/libvirt-domain.xml
+
+  Domains here are imperative (virsh), so this file is the git-tracked source
+  of truth for the VM's hardware. Keep it in sync after any `virsh edit` with:
+    ssh <gaming-01> sudo virsh dumpxml [dash][dash]inactive win11
+  (double hyphen spelled out — a literal one is illegal inside an XML comment.)
+
+  Added 2026-09-26, in the place vm-03 held. It is NOT a fleet member: no
+  NixOS, no comin, no k3s, no drift check. The OS inside is managed by hand
+  and by Windows Update; what git owns is this hardware description and the
+  answer file that installed it (autounattend.xml, beside this one).
+  That is why it lives under guests/ and not hosts/: every hosts/<dir> is a
+  nixosConfiguration, and emit-topology, drift-revisions, gpu-discovery and
+  emit-fleet's declared-hosts check all rely on it — a Windows guest there
+  would be asked over ssh for a git revision it cannot have.
+
+  KEY CHOICES:
+    - THE CARD IS arcade1's. <hostdev> b4:00.x is the RTX 3050 6GB (GA107,
+      10de:2584 + 2291), which arcade1 claims for a gaming session. This VM
+      borrows it the rest of the time — the arrangement vm-03 had for two
+      cards, reduced to one. The GTX 960 (arcade2's) is borrowed by NOBODY
+      now: it sits idle behind vfio-pci when arcade2 is off.
+      ARCADE1 WINS. Starting arcade1 through arcade-ctl shuts this VM down
+      first (clean ACPI/agent shutdown, destroy after 120 s), and starting
+      THIS VM while arcade1 runs is refused. A Windows session left open is
+      closed without asking — that was the owner's call (2026-09-26), made
+      knowing it. libvirt would refuse the double claim anyway; the ordering
+      in arcade-ctl is what turns the refusal into a handoff.
+    - ON DEMAND, autostart OFF. Unlike vm-03, nothing brings this VM back
+      when arcade1 stops. It starts when someone starts it (Home Assistant or
+      arcade-ctl), so an idle Windows never sits on 6 vCPU and 16 GiB.
+    - 6 vCPU / 16 GiB, the arcade size. It can run beside arcade2 (never
+      beside arcade1), and 6 + 6 is exactly gaming-01's 12 threads — the same
+      budget the two arcades were cut to on 2026-09-17 after measuring 5 %
+      steal at 8 + 8. Topology 3 cores x 2 threads MUST multiply to <vcpu>
+      or libvirt refuses the domain, and only at start, not at define.
+    - TPM 2.0 (swtpm, `virtualisation.libvirtd.qemu.swtpm.enable` on gaming-01)
+      because Windows 11 setup requires one. Secure Boot is OFF, like every
+      other guest here: nixpkgs ships no OVMF vars with Microsoft's keys
+      enrolled, so the answer file sets LabConfig\BypassSecureBootCheck
+      instead. The TPM state lives in /var/lib/libvirt/swtpm/<uuid> — keep
+      the uuid below stable or BitLocker-style TPM bindings are lost.
+    - Hyper-V enlightenments + hypervclock: the standard Windows-guest set.
+      THE RTC IS UTC, and Windows is told so (HKLM\...\TimeZoneInformation
+      RealTimeIsUniversal = 1, set by win11-setup.ps1) — the Linux convention,
+      which no DST change or host setting can shift. Two wrong turns first
+      (2026-09-26), both leaving Windows four hours ahead with the right zone:
+      `localtime` is the HOST's local time, and gaming-01 runs in UTC; then
+      offset='timezone' timezone='America/Toronto', which libvirt turns into
+      `-rtc base=localtime` with TZ=America/Toronto in QEMU's environment —
+      but NixOS keeps zone files in /etc/zoneinfo, QEMU gets no TZDIR, and
+      glibc falls back to UTC without a word. Takes effect on a full
+      stop/start of the domain, not a guest reboot.
+    - virtio disk and NIC. Setup has no driver for either, so the answer file
+      loads viostor/NetKVM from the virtio-win drive in windowsPE and installs
+      virtio-win-guest-tools.exe (all drivers + qemu guest agent) at first
+      logon. The agent is what lets `virsh shutdown` use [dash][dash]mode agent; ACPI
+      works regardless, Windows honours the power button.
+    - Single NIC, macvtap on gaming-01's `vlan10`, static 192.0.2.143/23,
+      IPv4 ONLY — the same NDP/DAD reflection on gaming-01's macvtap that forced
+      IPv6 off the arcades would make Windows flag its own address duplicate.
+      The answer file unbinds IPv6 from the adapter.
+    - QXL stays as a console for VNC (gaming-01.lab.example:5903, LAN + VPN only).
+      No <rom bar='off'/> on the card: that is vm-03's fix for OVMF wedging
+      on SEVERAL option ROMs, and this domain has one card, like arcade1.
+-->
+<domain type='kvm'>
+  <name>win11</name>
+  <uuid>00000000-0000-0000-0000-000000000000</uuid>
+  <memory unit='KiB'>16777216</memory>
+  <currentMemory unit='KiB'>16777216</currentMemory>
+  <vcpu placement='static'>6</vcpu>
+  <os firmware='efi'>
+    <type arch='x86_64' machine='q35'>hvm</type>
+    <firmware>
+      <feature enabled='no' name='enrolled-keys'/>
+      <feature enabled='no' name='secure-boot'/>
+    </firmware>
+    <loader readonly='yes' type='pflash' format='raw'>/run/libvirt/nix-ovmf/edk2-x86_64-code.fd</loader>
+    <nvram template='/run/libvirt/nix-ovmf/edk2-i386-vars.fd' templateFormat='raw' format='raw'>/var/lib/libvirt/qemu/nvram/win11_VARS.fd</nvram>
+    <boot dev='hd'/>
+    <boot dev='cdrom'/>
+  </os>
+  <features>
+    <acpi/>
+    <apic/>
+    <hyperv mode='custom'>
+      <relaxed state='on'/>
+      <vapic state='on'/>
+      <spinlocks state='on' retries='8191'/>
+      <vpindex state='on'/>
+      <runtime state='on'/>
+      <synic state='on'/>
+      <stimer state='on'/>
+      <reset state='on'/>
+      <frequencies state='on'/>
+      <tlbflush state='on'/>
+      <ipi state='on'/>
+    </hyperv>
+  </features>
+  <cpu mode='host-passthrough' check='none' migratable='off'>
+    <topology sockets='1' dies='1' cores='3' threads='2'/>
+  </cpu>
+  <clock offset='utc'>
+    <timer name='rtc' tickpolicy='catchup'/>
+    <timer name='pit' tickpolicy='delay'/>
+    <timer name='hpet' present='no'/>
+    <timer name='hypervclock' present='yes'/>
+  </clock>
+  <on_poweroff>destroy</on_poweroff>
+  <on_reboot>restart</on_reboot>
+  <on_crash>destroy</on_crash>
+  <pm>
+    <suspend-to-mem enabled='no'/>
+    <suspend-to-disk enabled='no'/>
+  </pm>
+  <devices>
+    <emulator>/run/libvirt/nix-emulators/qemu-system-x86_64</emulator>
+    <disk type='file' device='disk'>
+      <driver name='qemu' type='qcow2' discard='unmap' cache='none' io='native'/>
+      <source file='/var/lib/libvirt/images/win11.qcow2'/>
+      <target dev='vda' bus='virtio'/>
+    </disk>
+    <!-- Empty cdroms once installed. To reinstall, insert the Windows ISO in
+         sda and the answer-file + virtio-win ISO in sdb:
+           virsh change-media win11 sda /var/lib/libvirt/images/win11-install.iso
+           virsh change-media win11 sdb /var/lib/libvirt/images/win11-drivers.iso
+         The Windows boot loader waits for a key ("Press any key to boot from
+         CD or DVD") and falls through to the disk if none comes, so send one
+         right after start: virsh send-key win11 KEY_ENTER. -->
+    <disk type='file' device='cdrom'>
+      <driver name='qemu' type='raw'/>
+      <target dev='sda' bus='sata'/>
+      <readonly/>
+    </disk>
+    <disk type='file' device='cdrom'>
+      <driver name='qemu' type='raw'/>
+      <target dev='sdb' bus='sata'/>
+      <readonly/>
+    </disk>
+    <controller type='pci' index='0' model='pcie-root'/>
+    <controller type='pci' index='1' model='pcie-root-port'/>
+    <controller type='pci' index='2' model='pcie-root-port'/>
+    <controller type='pci' index='3' model='pcie-root-port'/>
+    <controller type='pci' index='4' model='pcie-root-port'/>
+    <controller type='pci' index='5' model='pcie-root-port'/>
+    <controller type='pci' index='6' model='pcie-root-port'/>
+    <controller type='pci' index='7' model='pcie-root-port'/>
+    <controller type='pci' index='8' model='pcie-root-port'/>
+    <controller type='sata' index='0'/>
+    <controller type='virtio-serial' index='0'/>
+    <controller type='usb' index='0' model='qemu-xhci'/>
+
+    <!-- arcade1's card, borrowed. An address, not a promise about which
+         card: see the header and hosts/gaming-01. -->
+    <hostdev mode='subsystem' type='pci' managed='yes'>
+      <source>
+        <address domain='0x0000' bus='0xb4' slot='0x00' function='0x0'/>
+      </source>
+    </hostdev>
+    <hostdev mode='subsystem' type='pci' managed='yes'>
+      <source>
+        <address domain='0x0000' bus='0xb4' slot='0x00' function='0x1'/>
+      </source>
+    </hostdev>
+
+    <!-- VLAN10 (fleet mgmt, default route). Only interface. -->
+    <interface type='direct' trustGuestRxFilters='yes'>
+      <mac address='02:00:00:00:00:01'/>
+      <source dev='vlan10' mode='bridge'/>
+      <model type='virtio'/>
+    </interface>
+
+    <channel type='unix'>
+      <target type='virtio' name='org.qemu.guest_agent.0'/>
+    </channel>
+    <tpm model='tpm-crb'>
+      <backend type='emulator' version='2.0'/>
+    </tpm>
+    <input type='tablet' bus='usb'/>
+    <input type='mouse' bus='ps2'/>
+    <input type='keyboard' bus='ps2'/>
+    <graphics type='vnc' port='-1' autoport='yes' listen='127.0.0.1'/>
+    <video>
+      <model type='qxl' ram='65536' vram='65536' vgamem='16384' heads='1'/>
+    </video>
+    <audio id='1' type='none'/>
+    <memballoon model='virtio'/>
+  </devices>
+</domain>
