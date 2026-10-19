@@ -1,0 +1,374 @@
+{
+  "edges": [
+    {
+      "from": "host:aws",
+      "kind": "member-of",
+      "to": "cluster:k3s"
+    },
+    {
+      "from": "host:bob",
+      "kind": "member-of",
+      "to": "cluster:k3s"
+    },
+    {
+      "from": "host:luna",
+      "kind": "member-of",
+      "to": "cluster:k3s"
+    },
+    {
+      "from": "host:stella",
+      "kind": "member-of",
+      "to": "cluster:k3s"
+    },
+    {
+      "from": "host:vega",
+      "kind": "member-of",
+      "to": "cluster:k3s"
+    },
+    {
+      "from": "host:worker1",
+      "kind": "member-of",
+      "to": "cluster:k3s"
+    },
+    {
+      "from": "host:worker2",
+      "kind": "member-of",
+      "to": "cluster:k3s"
+    },
+    {
+      "from": "host:worker3",
+      "kind": "member-of",
+      "to": "cluster:k3s"
+    },
+    {
+      "from": "host:worker4",
+      "kind": "member-of",
+      "to": "cluster:k3s"
+    },
+    {
+      "from": "host:worker5",
+      "kind": "member-of",
+      "to": "cluster:k3s"
+    },
+    {
+      "from": "host:worker1",
+      "kind": "uses",
+      "to": "external:nas"
+    }
+  ],
+  "layer": "hardware",
+  "nodes": [
+    {
+      "id": "host:arcade1",
+      "kind": "host",
+      "label": "arcade1",
+      "layer": "hardware",
+      "meta": {
+        "arch": "x86_64-linux",
+        "class": "server",
+        "modules": [
+          "arcade-desktop",
+          "nvidia-driver",
+          "private-ca"
+        ],
+        "networks": []
+      },
+      "source": "hosts/arcade1/configuration.nix"
+    },
+    {
+      "id": "host:arcade2",
+      "kind": "host",
+      "label": "arcade2",
+      "layer": "hardware",
+      "meta": {
+        "arch": "x86_64-linux",
+        "class": "server",
+        "modules": [
+          "arcade-desktop",
+          "nvidia-driver",
+          "private-ca"
+        ],
+        "networks": []
+      },
+      "source": "hosts/arcade2/configuration.nix"
+    },
+    {
+      "id": "host:aws",
+      "kind": "host",
+      "label": "aws",
+      "layer": "hardware",
+      "meta": {
+        "arch": "x86_64-linux",
+        "class": "cloud-vm",
+        "k3sRole": "server",
+        "modules": [
+          "k3s-agent",
+          "k3s-upstream",
+          "private-ca"
+        ],
+        "networks": [
+          "wireguard"
+        ]
+      },
+      "source": "hosts/aws/configuration.nix"
+    },
+    {
+      "id": "host:bob",
+      "kind": "host",
+      "label": "bob",
+      "layer": "hardware",
+      "meta": {
+        "arch": "x86_64-linux",
+        "class": "server",
+        "k3sRole": "agent",
+        "modules": [
+          "caps-ctrl",
+          "dual-homed-routing",
+          "k3s-agent",
+          "kiosk",
+          "nvidia-driver",
+          "private-ca",
+          "rack-wake",
+          "ups-cp-1",
+          "vm-host"
+        ],
+        "networks": [
+          "vlan10"
+        ]
+      },
+      "source": "hosts/bob/configuration.nix"
+    },
+    {
+      "id": "host:coquille",
+      "kind": "host",
+      "label": "coquille",
+      "layer": "hardware",
+      "meta": {
+        "arch": "x86_64-linux",
+        "class": "vm",
+        "modules": [
+          "console-container",
+          "console-log-shipping",
+          "dual-homed-routing",
+          "jumphost-tools",
+          "private-ca"
+        ],
+        "networks": []
+      },
+      "source": "hosts/coquille/configuration.nix"
+    },
+    {
+      "id": "host:kiosque",
+      "kind": "host",
+      "label": "kiosque",
+      "layer": "hardware",
+      "meta": {
+        "arch": "x86_64-linux",
+        "class": "server",
+        "modules": [
+          "caps-ctrl",
+          "kiosk",
+          "kiosk-capture",
+          "private-ca"
+        ],
+        "networks": [
+          "vlan10"
+        ]
+      },
+      "source": "hosts/kiosque/configuration.nix"
+    },
+    {
+      "id": "host:luna",
+      "kind": "host",
+      "label": "luna",
+      "layer": "hardware",
+      "meta": {
+        "arch": "x86_64-linux",
+        "class": "server",
+        "k3sRole": "agent",
+        "modules": [
+          "caps-ctrl",
+          "drift-check",
+          "dual-homed-routing",
+          "frigate-host",
+          "k3s-agent",
+          "kiosk-capture",
+          "labo-gpus",
+          "nvidia-driver",
+          "private-ca",
+          "ups-client",
+          "vm-host"
+        ],
+        "networks": [
+          "vlan10"
+        ]
+      },
+      "source": "hosts/luna/configuration.nix"
+    },
+    {
+      "id": "host:stella",
+      "kind": "host",
+      "label": "stella",
+      "layer": "hardware",
+      "meta": {
+        "arch": "x86_64-linux",
+        "class": "server",
+        "k3sRole": "agent",
+        "modules": [
+          "caps-ctrl",
+          "dual-homed-routing",
+          "frigate-host",
+          "k3s-agent",
+          "nvidia-driver",
+          "private-ca",
+          "ups-client"
+        ],
+        "networks": [
+          "vlan10"
+        ]
+      },
+      "source": "hosts/stella/configuration.nix"
+    },
+    {
+      "id": "host:vega",
+      "kind": "host",
+      "label": "vega",
+      "layer": "hardware",
+      "meta": {
+        "arch": "x86_64-linux",
+        "class": "server",
+        "k3sRole": "agent",
+        "modules": [
+          "caps-ctrl",
+          "dual-homed-routing",
+          "k3s-agent",
+          "private-ca",
+          "ups-client"
+        ],
+        "networks": [
+          "vlan10"
+        ]
+      },
+      "source": "hosts/vega/configuration.nix"
+    },
+    {
+      "id": "host:worker1",
+      "kind": "host",
+      "label": "worker1",
+      "layer": "hardware",
+      "meta": {
+        "arch": "aarch64-linux",
+        "class": "sbc",
+        "k3sRole": "agent",
+        "modules": [
+          "dual-homed-routing",
+          "k3s-agent",
+          "k3s-upstream",
+          "nas-wake",
+          "private-ca",
+          "ups-cp-1"
+        ],
+        "networks": [
+          "vlan10"
+        ]
+      },
+      "source": "hosts/worker1/configuration.nix"
+    },
+    {
+      "id": "host:worker2",
+      "kind": "host",
+      "label": "worker2",
+      "layer": "hardware",
+      "meta": {
+        "arch": "aarch64-linux",
+        "class": "sbc",
+        "k3sRole": "agent",
+        "modules": [
+          "bob-voice-warm",
+          "console-container",
+          "dual-homed-routing",
+          "ha-backup",
+          "house-heartbeat",
+          "jumphost",
+          "k3s-agent",
+          "k3s-upstream",
+          "private-ca",
+          "rack-wake",
+          "ups-cp-1"
+        ],
+        "networks": [
+          "vlan10"
+        ]
+      },
+      "source": "hosts/worker2/configuration.nix"
+    },
+    {
+      "id": "host:worker3",
+      "kind": "host",
+      "label": "worker3",
+      "layer": "hardware",
+      "meta": {
+        "arch": "x86_64-linux",
+        "class": "vm",
+        "k3sRole": "agent",
+        "modules": [
+          "comin",
+          "dual-homed-routing",
+          "k3s-agent",
+          "private-ca"
+        ],
+        "networks": []
+      },
+      "source": "hosts/worker3/configuration.nix"
+    },
+    {
+      "id": "host:worker4",
+      "kind": "host",
+      "label": "worker4",
+      "layer": "hardware",
+      "meta": {
+        "arch": "x86_64-linux",
+        "class": "vm",
+        "k3sRole": "agent",
+        "modules": [
+          "comin",
+          "dual-homed-routing",
+          "k3s-agent",
+          "private-ca"
+        ],
+        "networks": []
+      },
+      "source": "hosts/worker4/configuration.nix"
+    },
+    {
+      "id": "host:worker5",
+      "kind": "host",
+      "label": "worker5",
+      "layer": "hardware",
+      "meta": {
+        "arch": "x86_64-linux",
+        "class": "vm",
+        "k3sRole": "agent",
+        "modules": [
+          "k3s-agent",
+          "private-ca",
+          "vm-host"
+        ],
+        "networks": []
+      },
+      "source": "hosts/worker5/configuration.nix"
+    },
+    {
+      "id": "external:nas",
+      "kind": "external",
+      "label": "nas",
+      "layer": "external",
+      "meta": {
+        "via": "nas-wake module, NFS mounts"
+      },
+      "source": "modules/nas-wake.nix"
+    }
+  ],
+  "repo": "nixos-iac-public",
+  "topologyVersion": 1
+}

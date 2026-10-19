@@ -1,0 +1,109 @@
+<!--
+  Canonical libvirt domain for worker5, a CPU-only k3s worker VM.
+  Define/restore with:  virsh define hosts/worker5/libvirt-domain.xml
+
+  Domains here are imperative (virsh), so this file is the git-tracked source
+  of truth for the VM's hardware. Keep it in sync after any `virsh edit` with:
+    ssh <its host> sudo virsh dumpxml [dash][dash]inactive worker5
+  (double hyphen spelled out: a literal one is illegal inside an XML comment.)
+
+  Recreated 2026-10-08 on stella (it was the cluster's opportunistic GPU node
+  from 2026-09-14 to 09-26; that domain, with its hostdevs, is 566f50e^).
+    - 4 vCPU / 4 GiB / 60 GiB, the owner's size: CPU work only.
+    - host-model CPU and NO hostdev, so it migrates live between the X11SRA
+      hosts (vm-move, modules/vm-host.nix). host-passthrough with
+      migratable='off' is what blocked win11's first move (invtsc).
+    - q35 + OVMF, kept from the GPU days; harmless without a card.
+    - Single NIC, macvtap on the host's `vlan10`, 192.0.2.135, IPv4 only.
+-->
+<domain type='kvm'>
+  <name>worker5</name>
+  <uuid>00000000-0000-0000-0000-000000000000</uuid>
+  <memory unit='KiB'>4194304</memory>
+  <currentMemory unit='KiB'>4194304</currentMemory>
+  <vcpu placement='static'>4</vcpu>
+  <os firmware='efi'>
+    <type arch='x86_64' machine='q35'>hvm</type>
+    <firmware>
+      <feature enabled='no' name='enrolled-keys'/>
+      <feature enabled='no' name='secure-boot'/>
+    </firmware>
+    <loader readonly='yes' type='pflash' format='raw'>/run/libvirt/nix-ovmf/edk2-x86_64-code.fd</loader>
+    <nvram template='/run/libvirt/nix-ovmf/edk2-i386-vars.fd' templateFormat='raw' format='raw'>/var/lib/libvirt/qemu/nvram/worker5_VARS.fd</nvram>
+    <boot dev='cdrom'/>
+    <boot dev='hd'/>
+  </os>
+  <features>
+    <acpi/>
+    <apic/>
+  </features>
+  <cpu mode='host-model' check='partial'>
+    <topology sockets='1' dies='1' cores='2' threads='2'/>
+  </cpu>
+  <clock offset='utc'>
+    <timer name='rtc' tickpolicy='catchup'/>
+    <timer name='pit' tickpolicy='delay'/>
+    <timer name='hpet' present='no'/>
+  </clock>
+  <on_poweroff>destroy</on_poweroff>
+  <on_reboot>restart</on_reboot>
+  <on_crash>destroy</on_crash>
+  <pm>
+    <suspend-to-mem enabled='no'/>
+    <suspend-to-disk enabled='no'/>
+  </pm>
+  <devices>
+    <emulator>/run/libvirt/nix-emulators/qemu-system-x86_64</emulator>
+    <disk type='file' device='disk'>
+      <driver name='qemu' type='qcow2' discard='unmap' cache='none' io='native'/>
+      <source file='/var/lib/libvirt/images/worker5.qcow2'/>
+      <target dev='vda' bus='virtio'/>
+    </disk>
+    <!-- Empty cdrom. To install, insert the installer with
+         `virsh change-media worker5 sda
+         /var/lib/libvirt/images/worker5-installer.iso`. -->
+    <disk type='file' device='cdrom'>
+      <driver name='qemu' type='raw'/>
+      <target dev='sda' bus='sata'/>
+      <readonly/>
+    </disk>
+    <controller type='pci' index='0' model='pcie-root'/>
+    <controller type='pci' index='1' model='pcie-root-port'/>
+    <controller type='pci' index='2' model='pcie-root-port'/>
+    <controller type='pci' index='3' model='pcie-root-port'/>
+    <controller type='pci' index='4' model='pcie-root-port'/>
+    <controller type='pci' index='5' model='pcie-root-port'/>
+    <controller type='pci' index='6' model='pcie-root-port'/>
+    <controller type='sata' index='0'/>
+    <controller type='virtio-serial' index='0'/>
+
+
+    <!-- VLAN10 (fleet mgmt, default route). Only interface. -->
+    <interface type='direct' trustGuestRxFilters='yes'>
+      <mac address='02:00:00:00:00:01'/>
+      <source dev='vlan10' mode='bridge'/>
+      <model type='virtio'/>
+    </interface>
+
+    <serial type='pty'>
+      <target type='isa-serial' port='0'>
+        <model name='isa-serial'/>
+      </target>
+    </serial>
+    <console type='pty'>
+      <target type='serial' port='0'/>
+    </console>
+    <channel type='unix'>
+      <target type='virtio' name='org.qemu.guest_agent.0'/>
+    </channel>
+    <input type='tablet' bus='usb'/>
+    <input type='mouse' bus='ps2'/>
+    <input type='keyboard' bus='ps2'/>
+    <graphics type='vnc' port='-1' autoport='yes' listen='127.0.0.1'/>
+    <video>
+      <model type='qxl' ram='65536' vram='65536' vgamem='16384' heads='1'/>
+    </video>
+    <audio id='1' type='none'/>
+    <memballoon model='virtio'/>
+  </devices>
+</domain>

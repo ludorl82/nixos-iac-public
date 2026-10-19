@@ -1,0 +1,33 @@
+# Tests of the repo's shell scripts (scripts/tests/). check.yml evaluates the
+# Nix configurations and nothing else, so these never ran in CI: when #125
+# grew publish-snapshots.sh's repo list from four to six, its test fixture
+# went stale and two cases failed unnoticed until #128.
+#
+# Listed one by one on purpose: a test enters this list once it is known to
+# run on a stock runner (no nix, no network, no fleet ssh).
+name: script-tests
+
+on:
+  pull_request:
+    branches: [cp-1]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        test:
+          - publish-snapshots-test.sh
+          - vm-move-test.sh
+          - kiosk-desktop-test.sh
+    steps:
+      - uses: actions/checkout@v4
+      - name: git identity for fixtures
+        run: git config --global user.email ci@example.com && git config --global user.name ci && git config --global init.defaultBranch cp-1
+      - name: ${{ matrix.test }}
+        run: bash scripts/tests/${{ matrix.test }}
